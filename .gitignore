@@ -1,0 +1,5 @@
+.vs*/
+config/
+dev/
+dist/
+node_modules/
