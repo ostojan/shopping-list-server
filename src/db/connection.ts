@@ -1,4 +1,4 @@
-import { createConnection } from "typeorm";
+import { createConnection, getConnection } from "typeorm";
 import {
     DATABASE_ADDRESS,
     DATABASE_NAME,
@@ -6,6 +6,7 @@ import {
     DATABASE_PORT,
     DATABASE_USER,
     IS_PRODUCTION,
+    IS_TEST,
 } from "../constants";
 import { User } from "../entities/User";
 
@@ -18,9 +19,12 @@ export const connection = {
             username: DATABASE_USER,
             password: DATABASE_PASSWORD,
             database: DATABASE_NAME,
-            logging: !IS_PRODUCTION,
+            logging: !IS_PRODUCTION && !IS_TEST,
             synchronize: !IS_PRODUCTION,
             entities: [User],
         });
+    },
+    async close() {
+        await getConnection().close();
     },
 };

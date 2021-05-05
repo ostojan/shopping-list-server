@@ -1,5 +1,6 @@
 // Global properties
 export const IS_PRODUCTION = process.env.NODE_ENV === "production";
+export const IS_TEST = !!process.env.IS_TEST;
 
 // Server properties
 export const PORT: number = process.env.PORT ? parseInt(process.env.PORT) : 4000;
