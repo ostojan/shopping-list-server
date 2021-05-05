@@ -9,6 +9,7 @@ import {
     IS_TEST,
 } from "../constants";
 import { User } from "../entities/User";
+import { UserSubscriber } from "../subscribers/UserSubscriber";
 
 export const connection = {
     async create() {
@@ -22,6 +23,7 @@ export const connection = {
             logging: !IS_PRODUCTION && !IS_TEST,
             synchronize: !IS_PRODUCTION,
             entities: [User],
+            subscribers: [UserSubscriber],
         });
     },
     async close() {

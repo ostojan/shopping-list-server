@@ -5,6 +5,9 @@ export const IS_TEST = !!process.env.IS_TEST;
 // Server properties
 export const PORT: number = process.env.PORT ? parseInt(process.env.PORT) : 4000;
 
+// Argon2 properties
+export const ARGON2_SECRET: string = process.env.ARGON2_SECRET!;
+
 // Database properties
 export const DATABASE_ADDRESS: string = process.env.DATABASE_ADDRESS!;
 export const DATABASE_PORT: number = process.env.DATABASE_PORT ? parseInt(process.env.DATABASE_PORT) : 5432;
