@@ -7,6 +7,7 @@ import {
     DATABASE_USER,
     IS_PRODUCTION,
 } from "../constants";
+import { User } from "../entities/User";
 
 export const connection = {
     async create() {
@@ -19,6 +20,7 @@ export const connection = {
             database: DATABASE_NAME,
             logging: !IS_PRODUCTION,
             synchronize: !IS_PRODUCTION,
+            entities: [User],
         });
     },
 };
