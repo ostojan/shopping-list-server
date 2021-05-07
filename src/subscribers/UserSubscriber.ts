@@ -14,14 +14,24 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
     }
 
     async beforeUpdate({ entity: user, updatedColumns }: UpdateEvent<User>) {
-        const updatedFileds = updatedColumns.map((value: ColumnMetadata) => value.propertyName);
-        UserValidator.validate(user, updatedFileds);
-        if (updatedFileds.includes("password")) {
+        await this.handleUpdate(
+            user,
+            updatedColumns.map((value: ColumnMetadata) => value.propertyName)
+        );
+    }
+
+    async handleUpdate(user: User, updatedFields: string[]) {
+        UserValidator.validate(user, updatedFields);
+        if (updatedFields.includes("password")) {
             user.password = await this.passwordHasher.hash(user.password);
         }
     }
 
     async beforeInsert({ entity: user }: InsertEvent<User>) {
+        await this.handleInsert(user);
+    }
+
+    async handleInsert(user: User) {
         UserValidator.validate(user);
         user.password = await this.passwordHasher.hash(user.password);
     }

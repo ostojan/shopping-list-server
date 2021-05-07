@@ -1,6 +1,5 @@
-import { getConnection } from "typeorm";
 import { User } from "../../src/entities/User";
-import { UserRepository } from "../../src/repositories/UserRepository";
+import { UserSubscriber } from "../../src/subscribers/UserSubscriber";
 import { ArgonPasswordHasher } from "../../src/utils/ArgonPasswordHasher";
 import {
     anotherValidEmail,
@@ -15,7 +14,6 @@ import {
     passwordWithoutNumber,
     passwordWithoutSpecialCharacter,
     passwordWithoutUppercase,
-    saveValidUser,
     tooLongEmail,
     tooLongPassword,
     tooLongUsername,
@@ -24,26 +22,19 @@ import {
 } from "../fixtures/entities/User";
 import { expectNotToThrow } from "../test-utils/expectNotToThrow";
 import { expectToThrow } from "../test-utils/expectToThrow";
-import "../test-utils/setupDatabase";
 
 describe("UserSubscriber", () => {
-    let userRepository: UserRepository;
+    const passwordHasher = new ArgonPasswordHasher();
+    const userSubscriber = new UserSubscriber();
 
-    beforeEach(async () => {
-        userRepository = getConnection().getCustomRepository(UserRepository);
-        await userRepository.delete({});
+    describe("listenTo", () => {
+        it("should return User class", () => {
+            expect(userSubscriber.listenTo()).toBe(User);
+        });
     });
 
-    describe.each`
-        method            | createUser
-        ${"beforeInsert"} | ${createValidUser}
-        ${"beforeUpdate"} | ${saveValidUser}
-    `("$method", ({ createUser }) => {
-        let user: User;
-
-        beforeEach(async () => {
-            user = await createUser();
-        });
+    describe("handleInput", () => {
+        const user = createValidUser();
 
         it.each`
             description                        | value
@@ -52,7 +43,7 @@ describe("UserSubscriber", () => {
             ${"is longer than 255 characters"} | ${tooLongUsername}
         `("should throw an error when user username $description", async ({ value }) => {
             user.username = value;
-            await expectToThrow(() => userRepository.save(user));
+            await expectToThrow(() => userSubscriber.handleInsert(user));
         });
 
         it.each`
@@ -62,7 +53,7 @@ describe("UserSubscriber", () => {
             ${"is longer than 255 characters"} | ${tooLongEmail}
         `("should throw an error when user email $description", async ({ value }) => {
             user.email = value;
-            await expectToThrow(() => userRepository.save(user));
+            await expectToThrow(() => userSubscriber.handleInsert(user));
         });
 
         it.each`
@@ -76,26 +67,75 @@ describe("UserSubscriber", () => {
             ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter}
         `("should throw an error when user password $description", async ({ value }) => {
             user.password = value;
-            await expectToThrow(() => userRepository.save(user));
+            await expectToThrow(() => userSubscriber.handleInsert(user));
         });
 
         it("should not throw an error when all user fields are valid", async () => {
             user.username = anotherValidUsername;
             user.email = anotherValidEmail;
             user.password = anotherValidPassword;
-            await expectNotToThrow(() => userRepository.save(user));
+            await expectNotToThrow(() => userSubscriber.handleInsert(user));
         });
 
-        it("should not store password in plaintext", async () => {
+        it("should replace user password with hash verifiable by ArgonPasswordHasher", async () => {
             user.password = anotherValidPassword;
-            await userRepository.save(user);
+            await userSubscriber.handleInsert(user);
             expect(user.password).not.toBe(anotherValidPassword);
+            expect(await passwordHasher.verify(anotherValidPassword, user.password)).toBe(true);
+        });
+    });
+
+    describe("handleUpdate", () => {
+        const user = createValidUser();
+
+        const throwAnErrorDescription =
+            "should throw an error when user $field $description and $field is passed as updated field";
+
+        it.each`
+            description                        | value               | field
+            ${"is empty"}                      | ${emptyUsername}    | ${"username"}
+            ${"is shorter than 2 characters"}  | ${tooShortUsername} | ${"username"}
+            ${"is longer than 255 characters"} | ${tooLongUsername}  | ${"username"}
+        `(throwAnErrorDescription, async ({ value, field }) => {
+            user.username = value;
+            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
         });
 
-        it("should store password as a string verifiable by ArgonPasswordHasher", async () => {
-            const passwordHasher = new ArgonPasswordHasher();
+        it.each`
+            description                        | value           | field
+            ${"is empty"}                      | ${empytEmail}   | ${"email"}
+            ${"is not an email"}               | ${notAnEmail}   | ${"email"}
+            ${"is longer than 255 characters"} | ${tooLongEmail} | ${"email"}
+        `(throwAnErrorDescription, async ({ value, field }) => {
+            user.email = value;
+            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
+        });
+
+        it.each`
+            description                           | value                              | field
+            ${"is empty"}                         | ${emptyPassword}                   | ${"password"}
+            ${"is shorter than 8 characters"}     | ${tooShortPassword}                | ${"password"}
+            ${"is longer than 32 characters"}     | ${tooLongPassword}                 | ${"password"}
+            ${"contains no lowercase characters"} | ${passwordWithoutLowercase}        | ${"password"}
+            ${"contains no uppercase characters"} | ${passwordWithoutUppercase}        | ${"password"}
+            ${"contains no number characters"}    | ${passwordWithoutNumber}           | ${"password"}
+            ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter} | ${"password"}
+        `(throwAnErrorDescription, async ({ value, field }) => {
+            user.password = value;
+            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
+        });
+
+        it("should not throw an error when all user fields are valid and all fields are passed as updated fields", async () => {
+            user.username = anotherValidUsername;
+            user.email = anotherValidEmail;
             user.password = anotherValidPassword;
-            await userRepository.save(user);
+            await expectNotToThrow(() => userSubscriber.handleUpdate(user, Object.getOwnPropertyNames(user)));
+        });
+
+        it("should replace user password with hash verifiable by ArgonPasswordHasher when password is valid and password is passed as updated field", async () => {
+            user.password = anotherValidPassword;
+            await userSubscriber.handleUpdate(user, ["password"]);
+            expect(user.password).not.toBe(anotherValidPassword);
             expect(await passwordHasher.verify(anotherValidPassword, user.password)).toBe(true);
         });
     });
