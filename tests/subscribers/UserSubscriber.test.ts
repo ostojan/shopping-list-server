@@ -1,8 +1,7 @@
-import * as argon2 from "argon2";
 import { getConnection } from "typeorm";
-import { ARGON2_SECRET } from "../../src/constants";
 import { User } from "../../src/entities/User";
 import { UserRepository } from "../../src/repositories/UserRepository";
+import { ArgonPasswordHasher } from "../../src/utils/ArgonPasswordHasher";
 import {
     anotherValidEmail,
     anotherValidPassword,
@@ -93,12 +92,11 @@ describe("UserSubscriber", () => {
             expect(user.password).not.toBe(anotherValidPassword);
         });
 
-        it("should store password as a string verifiable by Argon2", async () => {
+        it("should store password as a string verifiable by ArgonPasswordHasher", async () => {
+            const passwordHasher = new ArgonPasswordHasher();
             user.password = anotherValidPassword;
             await userRepository.save(user);
-            expect(
-                await argon2.verify(user.password, anotherValidPassword, { secret: Buffer.from(ARGON2_SECRET) })
-            ).toBe(true);
+            expect(await passwordHasher.verify(anotherValidPassword, user.password)).toBe(true);
         });
     });
 });

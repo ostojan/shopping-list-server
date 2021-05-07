@@ -1,12 +1,14 @@
-import * as argon2 from "argon2";
 import { EntitySubscriberInterface, EventSubscriber, InsertEvent, UpdateEvent } from "typeorm";
 import { ColumnMetadata } from "typeorm/metadata/ColumnMetadata";
-import { ARGON2_SECRET } from "../constants";
 import { User } from "../entities/User";
+import { ArgonPasswordHasher } from "../utils/ArgonPasswordHasher";
+import { PasswordHasher } from "../utils/PasswordHasher";
 import { UserValidator } from "../validators/UserValidator";
 
 @EventSubscriber()
 export class UserSubscriber implements EntitySubscriberInterface<User> {
+    private readonly passwordHasher: PasswordHasher = new ArgonPasswordHasher();
+
     listenTo() {
         return User;
     }
@@ -15,16 +17,12 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
         const updatedFileds = updatedColumns.map((value: ColumnMetadata) => value.propertyName);
         UserValidator.validate(user, updatedFileds);
         if (updatedFileds.includes("password")) {
-            user.password = await this.hashPassword(user.password);
+            user.password = await this.passwordHasher.hash(user.password);
         }
     }
 
     async beforeInsert({ entity: user }: InsertEvent<User>) {
         UserValidator.validate(user);
-        user.password = await this.hashPassword(user.password);
-    }
-
-    async hashPassword(password: string): Promise<string> {
-        return argon2.hash(password, { secret: Buffer.from(ARGON2_SECRET) });
+        user.password = await this.passwordHasher.hash(user.password);
     }
 }
