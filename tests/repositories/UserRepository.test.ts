@@ -7,24 +7,19 @@ import {
     validPassword,
     validUsername,
 } from "../fixtures/entities/User";
-import { dbHelper } from "../utils/dbHelper";
-
-beforeEach(async () => {
-    await dbHelper.createConnection();
-    await dbHelper.clearDatabase();
-});
-
-afterEach(async () => {
-    await dbHelper.closeConnection();
-});
+import "../test-utils/setupDatabase";
 
 describe("UserRepository", () => {
-    describe("findByUsernameAndPassword", () => {
-        let userRepository: UserRepository;
+    let userRepository: UserRepository;
 
+    beforeEach(async () => {
+        userRepository = getConnection().getCustomRepository(UserRepository);
+        await userRepository.delete({});
+    });
+
+    describe("findByUsernameAndPassword", () => {
         beforeEach(async () => {
             await saveValidUser();
-            userRepository = getConnection().getCustomRepository(UserRepository);
         });
 
         it("should return undefined when there is no user with provided username", async () => {
