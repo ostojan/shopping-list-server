@@ -1,18 +1,17 @@
-import * as argon2 from "argon2";
-import { EntityRepository, getConnection, Repository } from "typeorm";
-import { ARGON2_SECRET } from "../constants";
+import { EntityRepository, Repository } from "typeorm";
 import { User } from "../entities/User";
+import { ArgonPasswordHasher } from "../utils/ArgonPasswordHasher";
+import { PasswordHasher } from "../utils/PasswordHasher";
 
 @EntityRepository(User)
 export class UserRepository extends Repository<User> {
+    private readonly passwordHasher: PasswordHasher = new ArgonPasswordHasher();
+
     async findByUsernameAndPassword(username: string, password: string): Promise<User | undefined> {
-        const userRepository = getConnection().getCustomRepository(UserRepository);
-        const user = await userRepository.findOne({ username });
+        const user = await this.findOne({ username });
         if (!user) {
             return undefined;
         }
-        return (await argon2.verify(user.password, password, { secret: Buffer.from(ARGON2_SECRET) }))
-            ? user
-            : undefined;
+        return (await this.passwordHasher.verify(password, user.password)) ? user : undefined;
     }
 }
