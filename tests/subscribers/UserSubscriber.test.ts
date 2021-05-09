@@ -1,31 +1,33 @@
 import { User } from "../../src/entities/User";
 import { UserSubscriber } from "../../src/subscribers/UserSubscriber";
 import { ArgonPasswordHasher } from "../../src/utils/ArgonPasswordHasher";
-import {
-    anotherValidEmail,
-    anotherValidPassword,
-    anotherValidUsername,
-    createValidUser,
-    emptyPassword,
-    emptyUsername,
-    empytEmail,
-    notAnEmail,
-    passwordWithoutLowercase,
-    passwordWithoutNumber,
-    passwordWithoutSpecialCharacter,
-    passwordWithoutUppercase,
-    tooLongEmail,
-    tooLongPassword,
-    tooLongUsername,
-    tooShortPassword,
-    tooShortUsername,
-} from "../fixtures/entities/User";
+import { ValidationError } from "../../src/validators/EntityValidator";
+import { UserValidator } from "../../src/validators/UserValidator";
+import { createValidUser } from "../fixtures/entities/User";
 import { expectNotToThrow } from "../test-utils/expectNotToThrow";
 import { expectToThrow } from "../test-utils/expectToThrow";
 
 describe("UserSubscriber", () => {
-    const passwordHasher = new ArgonPasswordHasher();
-    const userSubscriber = new UserSubscriber();
+    const validateAllMock = jest.fn();
+    const validateSelectedMock = jest.fn();
+    const hashMock = jest.fn();
+    const validateError: ValidationError[] = [{ field: "field", message: "error" }];
+    let userSubscriber: UserSubscriber;
+    let user: User;
+
+    beforeAll(() => {
+        jest.mock("../../src/validators/UserValidator");
+        UserValidator.prototype.validateAllFields = validateAllMock;
+        UserValidator.prototype.validateSelectedFields = validateSelectedMock;
+        jest.mock("../../src/utils/ArgonPasswordHasher");
+        ArgonPasswordHasher.prototype.hash = hashMock;
+    });
+
+    beforeEach(() => {
+        userSubscriber = new UserSubscriber();
+        user = createValidUser();
+        jest.resetAllMocks();
+    });
 
     describe("listenTo", () => {
         it("should return User class", () => {
@@ -33,110 +35,141 @@ describe("UserSubscriber", () => {
         });
     });
 
-    describe("handleInput", () => {
-        const user = createValidUser();
-
-        it.each`
-            description                        | value
-            ${"is empty"}                      | ${emptyUsername}
-            ${"is shorter than 2 characters"}  | ${tooShortUsername}
-            ${"is longer than 255 characters"} | ${tooLongUsername}
-        `("should throw an error when user username $description", async ({ value }) => {
-            user.username = value;
-            await expectToThrow(() => userSubscriber.handleInsert(user));
+    describe("handleInsert", () => {
+        it("should call validateAllFields on EntityValidator only once", async () => {
+            try {
+                await userSubscriber.handleInsert(user);
+            } catch {
+            } finally {
+                expect(validateAllMock).toBeCalledTimes(1);
+            }
         });
 
-        it.each`
-            description                        | value
-            ${"is empty"}                      | ${empytEmail}
-            ${"is not an email"}               | ${notAnEmail}
-            ${"is longer than 255 characters"} | ${tooLongEmail}
-        `("should throw an error when user email $description", async ({ value }) => {
-            user.email = value;
-            await expectToThrow(() => userSubscriber.handleInsert(user));
+        it("should call validateAllFields on EntityValidator with passed user", async () => {
+            try {
+                await userSubscriber.handleInsert(user);
+            } catch {
+            } finally {
+                expect(validateAllMock).toBeCalledWith(user);
+            }
         });
 
-        it.each`
-            description                           | value
-            ${"is empty"}                         | ${emptyPassword}
-            ${"is shorter than 8 characters"}     | ${tooShortPassword}
-            ${"is longer than 32 characters"}     | ${tooLongPassword}
-            ${"contains no lowercase characters"} | ${passwordWithoutLowercase}
-            ${"contains no uppercase characters"} | ${passwordWithoutUppercase}
-            ${"contains no number characters"}    | ${passwordWithoutNumber}
-            ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter}
-        `("should throw an error when user password $description", async ({ value }) => {
-            user.password = value;
-            await expectToThrow(() => userSubscriber.handleInsert(user));
+        it("should not call hash on PasswordHasher when validateAllFields on EntityValidator returned any error", async () => {
+            try {
+                validateAllMock.mockReturnValue(validateError);
+                await userSubscriber.handleInsert(user);
+            } catch {
+            } finally {
+                expect(hashMock).not.toBeCalled();
+            }
         });
 
-        it("should not throw an error when all user fields are valid", async () => {
-            user.username = anotherValidUsername;
-            user.email = anotherValidEmail;
-            user.password = anotherValidPassword;
-            await expectNotToThrow(() => userSubscriber.handleInsert(user));
+        it("should throw Error when validateAllFields on EntityValidator returned any error", async () => {
+            validateAllMock.mockReturnValue(validateError);
+            expectToThrow(() => userSubscriber.handleInsert(user));
         });
 
-        it("should replace user password with hash verifiable by ArgonPasswordHasher", async () => {
-            user.password = anotherValidPassword;
+        it("should not throw Error when validateAllFields on EntityValidator returned no errors", async () => {
+            validateAllMock.mockReturnValue([]);
+            expectNotToThrow(() => userSubscriber.handleInsert(user));
+        });
+
+        it("should call hash on PasswordHaser only once when validateAllFields on EntityValidator returned no errors", async () => {
+            validateAllMock.mockReturnValue([]);
             await userSubscriber.handleInsert(user);
-            expect(user.password).not.toBe(anotherValidPassword);
-            expect(await passwordHasher.verify(anotherValidPassword, user.password)).toBe(true);
+            expect(hashMock).toBeCalledTimes(1);
+        });
+
+        it("should call hash on PasswordHaser with passed username password when validateAllFields on EntityValidator returned no errors", async () => {
+            validateAllMock.mockReturnValue([]);
+            const password = user.password;
+            await userSubscriber.handleInsert(user);
+            expect(hashMock).toBeCalledWith(password);
+        });
+
+        it("should store returned value of call of hash on PasswordHasher as user password when validateAllFields on EntityValidator returned no errors", async () => {
+            validateAllMock.mockReturnValue([]);
+            const hash = "hash";
+            hashMock.mockResolvedValue(hash);
+            await userSubscriber.handleInsert(user);
+            expect(user.password).toBe(hash);
         });
     });
 
     describe("handleUpdate", () => {
-        const user = createValidUser();
+        let fields: string[];
 
-        const throwAnErrorDescription =
-            "should throw an error when user $field $description and $field is passed as updated field";
-
-        it.each`
-            description                        | value               | field
-            ${"is empty"}                      | ${emptyUsername}    | ${"username"}
-            ${"is shorter than 2 characters"}  | ${tooShortUsername} | ${"username"}
-            ${"is longer than 255 characters"} | ${tooLongUsername}  | ${"username"}
-        `(throwAnErrorDescription, async ({ value, field }) => {
-            user.username = value;
-            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
+        beforeEach(() => {
+            fields = ["fields"];
         });
 
-        it.each`
-            description                        | value           | field
-            ${"is empty"}                      | ${empytEmail}   | ${"email"}
-            ${"is not an email"}               | ${notAnEmail}   | ${"email"}
-            ${"is longer than 255 characters"} | ${tooLongEmail} | ${"email"}
-        `(throwAnErrorDescription, async ({ value, field }) => {
-            user.email = value;
-            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
+        it("should call validateSelectedFields on EntityValidator only once", async () => {
+            try {
+                await userSubscriber.handleUpdate(user, fields);
+            } catch {
+            } finally {
+                expect(validateSelectedMock).toBeCalledTimes(1);
+            }
         });
 
-        it.each`
-            description                           | value                              | field
-            ${"is empty"}                         | ${emptyPassword}                   | ${"password"}
-            ${"is shorter than 8 characters"}     | ${tooShortPassword}                | ${"password"}
-            ${"is longer than 32 characters"}     | ${tooLongPassword}                 | ${"password"}
-            ${"contains no lowercase characters"} | ${passwordWithoutLowercase}        | ${"password"}
-            ${"contains no uppercase characters"} | ${passwordWithoutUppercase}        | ${"password"}
-            ${"contains no number characters"}    | ${passwordWithoutNumber}           | ${"password"}
-            ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter} | ${"password"}
-        `(throwAnErrorDescription, async ({ value, field }) => {
-            user.password = value;
-            await expectToThrow(() => userSubscriber.handleUpdate(user, [field]));
+        it("should call validateSelectedFields on EntityValidator with passed user and fields", async () => {
+            try {
+                await userSubscriber.handleUpdate(user, fields);
+            } catch {
+            } finally {
+                expect(validateSelectedMock).toBeCalledWith(user, fields);
+            }
         });
 
-        it("should not throw an error when all user fields are valid and all fields are passed as updated fields", async () => {
-            user.username = anotherValidUsername;
-            user.email = anotherValidEmail;
-            user.password = anotherValidPassword;
-            await expectNotToThrow(() => userSubscriber.handleUpdate(user, Object.getOwnPropertyNames(user)));
+        it("should not call hash on PasswordHasher when validateSelectedFields on EntityValidator returned any error", async () => {
+            try {
+                validateSelectedMock.mockReturnValue(validateError);
+                await userSubscriber.handleUpdate(user, fields);
+            } catch {
+            } finally {
+                expect(hashMock).not.toBeCalled();
+            }
         });
 
-        it("should replace user password with hash verifiable by ArgonPasswordHasher when password is valid and password is passed as updated field", async () => {
-            user.password = anotherValidPassword;
+        it("should throw Error when validateSelectedFields on EntityValidator returned any error", async () => {
+            validateSelectedMock.mockReturnValue(validateError);
+            expectToThrow(() => userSubscriber.handleUpdate(user, fields));
+        });
+
+        it("should not throw Error when validateSelectedFields on EntityValidator returned no errors", async () => {
+            validateSelectedMock.mockReturnValue([]);
+            expectNotToThrow(() => userSubscriber.handleUpdate(user, fields));
+        });
+
+        it("should not call hash on PasswordHasher when validateSelectedFields on EntityValidator returned no errors and password field was not passed", async () => {
+            try {
+                validateSelectedMock.mockReturnValue([]);
+                await userSubscriber.handleUpdate(user, fields);
+            } catch {
+            } finally {
+                expect(hashMock).not.toBeCalled();
+            }
+        });
+
+        it("should call hash on PasswordHaser only once when validateSelectedFields on EntityValidator returned no errors and password field was passed", async () => {
+            validateSelectedMock.mockReturnValue([]);
             await userSubscriber.handleUpdate(user, ["password"]);
-            expect(user.password).not.toBe(anotherValidPassword);
-            expect(await passwordHasher.verify(anotherValidPassword, user.password)).toBe(true);
+            expect(hashMock).toBeCalledTimes(1);
+        });
+
+        it("should call hash on PasswordHaser with passed username password when validateSelectedFields on EntityValidator returned no errors and password field was passed", async () => {
+            validateSelectedMock.mockReturnValue([]);
+            const password = user.password;
+            await userSubscriber.handleUpdate(user, ["password"]);
+            expect(hashMock).toBeCalledWith(password);
+        });
+
+        it("should store returned value of call of hash on PasswordHasher as user password when validateAllFields on EntityValidator returned no errors and password field was passed", async () => {
+            validateSelectedMock.mockReturnValue([]);
+            const hash = "hash";
+            hashMock.mockResolvedValue(hash);
+            await userSubscriber.handleUpdate(user, ["password"]);
+            expect(user.password).toBe(hash);
         });
     });
 });
