@@ -23,7 +23,9 @@ import {
 
 describe("UserValidator", () => {
     describe("validate", () => {
-        describe("without field argument", () => {
+        const userValidator = new UserValidator();
+
+        describe("validateAllFields", () => {
             let user: User;
 
             beforeEach(() => {
@@ -31,41 +33,55 @@ describe("UserValidator", () => {
             });
 
             it.each`
-                description                        | value
-                ${"is empty"}                      | ${emptyUsername}
-                ${"is shorter than 2 characters"}  | ${tooShortUsername}
-                ${"is longer than 255 characters"} | ${tooLongUsername}
-            `("should throw an error when user username $description", ({ value }) => {
+                description                        | value               | fieldName
+                ${"is empty"}                      | ${emptyUsername}    | ${"username"}
+                ${"is shorter than 2 characters"}  | ${tooShortUsername} | ${"username"}
+                ${"is longer than 255 characters"} | ${tooLongUsername}  | ${"username"}
+            `("should return error for field $fieldName when user $fieldName $description", ({ value, fieldName }) => {
                 user.username = value;
-                expect(() => UserValidator.validate(user)).toThrowError();
+                const result = userValidator.validateAllFields(user);
+                expect(result).toContainEqual(expect.objectContaining({ field: fieldName }));
             });
 
             it.each`
-                description                        | value
-                ${"is empty"}                      | ${empytEmail}
-                ${"is not an email"}               | ${notAnEmail}
-                ${"is longer than 255 characters"} | ${tooLongEmail}
-            `("should throw an error when user email $description", ({ value }) => {
+                description                        | value           | fieldName
+                ${"is empty"}                      | ${empytEmail}   | ${"email"}
+                ${"is not an email"}               | ${notAnEmail}   | ${"email"}
+                ${"is longer than 255 characters"} | ${tooLongEmail} | ${"email"}
+            `("should return error for field $fieldName when user $fieldName $description", ({ value, fieldName }) => {
                 user.email = value;
-                expect(() => UserValidator.validate(user)).toThrowError();
+                const result = userValidator.validateAllFields(user);
+                expect(result).toContainEqual(expect.objectContaining({ field: fieldName }));
             });
 
             it.each`
-                description                           | value
-                ${"is empty"}                         | ${emptyPassword}
-                ${"is shorter than 8 characters"}     | ${tooShortPassword}
-                ${"is longer than 32 characters"}     | ${tooLongPassword}
-                ${"contains no lowercase characters"} | ${passwordWithoutLowercase}
-                ${"contains no uppercase characters"} | ${passwordWithoutUppercase}
-                ${"contains no number characters"}    | ${passwordWithoutNumber}
-                ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter}
-            `("should throw an error when user password $description", async ({ value }) => {
+                description                           | value                              | fieldName
+                ${"is empty"}                         | ${emptyPassword}                   | ${"password"}
+                ${"is shorter than 8 characters"}     | ${tooShortPassword}                | ${"password"}
+                ${"is longer than 32 characters"}     | ${tooLongPassword}                 | ${"password"}
+                ${"contains no lowercase characters"} | ${passwordWithoutLowercase}        | ${"password"}
+                ${"contains no uppercase characters"} | ${passwordWithoutUppercase}        | ${"password"}
+                ${"contains no number characters"}    | ${passwordWithoutNumber}           | ${"password"}
+                ${"contains no special characters"}   | ${passwordWithoutSpecialCharacter} | ${"password"}
+            `("should return error for field $fieldName when user $fieldName $description", ({ value, fieldName }) => {
                 user.password = value;
-                expect(() => UserValidator.validate(user)).toThrowError();
+                const result = userValidator.validateAllFields(user);
+                expect(result).toContainEqual(expect.objectContaining({ field: fieldName }));
             });
 
-            it("should not throw an error when all user fields are valid", () => {
-                expect(() => UserValidator.validate(user)).not.toThrowError();
+            it.each`
+                fieldName
+                ${"username"}
+                ${"email"}
+                ${"password"}
+            `("should not return error for field $fieldName when user $fieldName is valid", ({ fieldName }) => {
+                const result = userValidator.validateAllFields(user);
+                expect(result).not.toContainEqual(expect.objectContaining({ field: fieldName }));
+            });
+
+            it("should not return any errors when all user fields are valid", () => {
+                const result = userValidator.validateAllFields(user);
+                expect(result).toHaveLength(0);
             });
         });
 
@@ -77,36 +93,59 @@ describe("UserValidator", () => {
             });
 
             it.each`
-                field
+                fieldName
                 ${"username"}
                 ${"email"}
                 ${"password"}
-            `("should throw an error when user $field is invalid and $field field is passed", ({ field }) => {
-                expect(() => UserValidator.validate(user, [field])).toThrowError();
-            });
+            `(
+                "should return an error for field $fieldName when user $fieldName is invalid and $fieldName field is passed",
+                ({ fieldName }) => {
+                    const result = userValidator.validateSelectedFields(user, [fieldName]);
+                    expect(result).toContainEqual(expect.objectContaining({ field: fieldName }));
+                }
+            );
 
             it.each`
-                field
+                fieldName
                 ${"username"}
                 ${"email"}
                 ${"password"}
-            `("should not throw an error when user $field is invalid and $field field is not passed", () => {
-                expect(() => UserValidator.validate(user, [])).not.toThrowError();
-            });
+            `(
+                "should not return an error for field $fieldName when user $fieldName is invalid and $fieldName field is not passed",
+                ({ fieldName }) => {
+                    const result = userValidator.validateSelectedFields(user, []);
+                    expect(result).not.toContainEqual(expect.objectContaining({ field: fieldName }));
+                }
+            );
 
-            it("should not throw an error when user username is valid and username field is passed", () => {
-                user.username = validUsername;
-                expect(() => UserValidator.validate(user, ["username"])).not.toThrowError();
-            });
+            it.each`
+                fieldName     | value
+                ${"username"} | ${validUsername}
+                ${"email"}    | ${validEmail}
+                ${"password"} | ${validPassword}
+            `(
+                "should not return an error for field $fieldName when user $fieldName is valid and $fieldName field is passed",
+                ({ value, fieldName }) => {
+                    switch (fieldName) {
+                        case "username":
+                            user.username = value;
+                            break;
+                        case "email":
+                            user.email = value;
+                            break;
+                        case "password":
+                            user.password = value;
+                            break;
+                    }
+                    const result = userValidator.validateSelectedFields(user, [fieldName]);
+                    expect(result).not.toContainEqual(expect.objectContaining({ field: fieldName }));
+                }
+            );
 
-            it("should not throw an error when user email is valid and email field is passed", () => {
-                user.email = validEmail;
-                expect(() => UserValidator.validate(user, ["email"])).not.toThrowError();
-            });
-
-            it("should not throw an error when user password is valid and password field is passed", () => {
-                user.password = validPassword;
-                expect(() => UserValidator.validate(user, ["password"])).not.toThrowError();
+            it("should not return any errors when all user fields are valid and all fields are passed", () => {
+                user = createValidUser();
+                const result = userValidator.validateSelectedFields(user, Object.getOwnPropertyNames(user));
+                expect(result).toHaveLength(0);
             });
         });
     });

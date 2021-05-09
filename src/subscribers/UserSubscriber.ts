@@ -1,3 +1,4 @@
+import { EntityValidator } from "src/validators/EntityValidator";
 import { EntitySubscriberInterface, EventSubscriber, InsertEvent, UpdateEvent } from "typeorm";
 import { ColumnMetadata } from "typeorm/metadata/ColumnMetadata";
 import { User } from "../entities/User";
@@ -7,6 +8,7 @@ import { UserValidator } from "../validators/UserValidator";
 
 @EventSubscriber()
 export class UserSubscriber implements EntitySubscriberInterface<User> {
+    private readonly userValidator: EntityValidator<User> = new UserValidator();
     private readonly passwordHasher: PasswordHasher = new ArgonPasswordHasher();
 
     listenTo() {
@@ -21,7 +23,10 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
     }
 
     async handleUpdate(user: User, updatedFields: string[]) {
-        UserValidator.validate(user, updatedFields);
+        const errors = this.userValidator.validateSelectedFields(user, updatedFields);
+        if (errors.length !== 0) {
+            throw new Error();
+        }
         if (updatedFields.includes("password")) {
             user.password = await this.passwordHasher.hash(user.password);
         }
@@ -32,7 +37,10 @@ export class UserSubscriber implements EntitySubscriberInterface<User> {
     }
 
     async handleInsert(user: User) {
-        UserValidator.validate(user);
+        const errors = this.userValidator.validateAllFields(user);
+        if (errors.length !== 0) {
+            throw new Error();
+        }
         user.password = await this.passwordHasher.hash(user.password);
     }
 }
