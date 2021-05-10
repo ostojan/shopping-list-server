@@ -30,17 +30,23 @@ export const invalidPassword = "VQVNHBFDUMZJJTMP";
 
 export const createValidUser = (): User => {
     const user = new User();
+    user.id = 1;
     user.username = validUsername;
     user.email = validEmail;
     user.password = validPassword;
+    user.createdAt = new Date();
+    user.updatedAt = new Date();
     return user;
 };
 
 export const createInvalidUser = (): User => {
     const user = new User();
+    user.id = 1;
     user.username = invalidUsername;
     user.email = invalidEmail;
     user.password = invalidPassword;
+    user.createdAt = new Date();
+    user.updatedAt = new Date();
     return user;
 };
 
