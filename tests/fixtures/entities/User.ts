@@ -1,6 +1,7 @@
 import { getConnection } from "typeorm";
 import { User } from "../../../src/entities/User";
 
+export const validId = 1;
 export const emptyUsername = "";
 export const tooShortUsername = "U";
 export const tooLongUsername =
